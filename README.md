@@ -22,6 +22,9 @@ You can output as terio or html via the `-p` flag.
 You can output to stdout or to a file via the `-f` flag.
 
 ## Run with defaults, termio to stdout
+```bash
+$ ./instance_count.py
+```
 ![sample termio output](doc/images/termio_sample.png)
 
 ## Run with `-p html`
