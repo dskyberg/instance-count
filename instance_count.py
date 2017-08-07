@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 from datetime import datetime, timezone, timedelta
+import argparse
 import boto3
-from colorama import init, Fore, Back, Style
+from formatter.formatter import FormatConfig
+from formatter.termio import TermioFormatter
+from formatter.html import HtmlFormatter
 
 
 def flatten(fat_list):
@@ -122,56 +125,6 @@ class ExpiryPeriods():
         val.add(days, count)
         self.expiries[key] = val
 
-    def _show_period(self, period, raw):
-        if self.totals.get(period) == 0:
-            return []
-
-        lines = []
-        pre_days = 'in the next '
-        banner_days = ''
-        multi = ' days'
-
-        if period == 'month':
-            banner_days = '30'
-        elif period == 'week':
-            banner_days = '7'
-        else:
-            pre_days = ''
-            banner_days = 'today'
-            multi = ''
-
-        banner = 'The following will expire {}{}{}{}{}'.format(pre_days, Style.BRIGHT, banner_days, Style.RESET_ALL, multi)
-        total = 0
-        if raw:
-            lines.append('\n"{}"'.format(banner))
-            for key, value in self.expiries.items():
-                if value > 0:
-                    total += value[period]
-                    lines.append('"{}"\t{}'.format(key, value[perios]))
-            lines.append('"{}"\t{}'.format('Total', total))
-        else:
-            lines.append('\n{}'.format(banner))
-            lines.append('{}{:<15s}{:>10}{}'.format(Style.BRIGHT, 'Type', 'Number', Style.RESET_ALL))
-            lines.append('\u2500' * 25)
-            for key, value in self.expiries.items():
-                val = value.get(period)
-                if val > 0:
-                    total += val
-                    lines.append('{:<15}{:>10}'.format(key, str(val)))
-            lines.append('\u2500' * 25)
-            lines.append('{}{:<15}{:>10}{}'.format(Style.BRIGHT, 'Total', str(total), Style.RESET_ALL))
-        return lines
-
-    def show(self, raw=False):
-        lines = []
-        if len(self.expiries.keys()) == 0:
-            lines.append("No instances expire in the next 30 days")
-            return
-        lines.extend(self._show_period('month', raw))
-        lines.extend(self._show_period('week', raw))
-        lines.extend(self._show_period('day', raw))
-        return '\n'.join(lines)
-
 
 class InstancesBase():
     def __init__(self, client):
@@ -283,114 +236,46 @@ class ReservedRdsInstances(InstancesBase):
             self.expiries.add(it, cnt, end)
 
 
-down_arrow = '\u2193'
-up_arrow = '\u2191'
-smiley = '\u263a'
-
-
-def ansi_width(width, str, formatted_str):
-    str_len = len(str)
-    f_str_len = len(formatted_str)
-    diff = f_str_len - str_len
-    result = ' ' * diff
-    result += formatted_str
-    return result
-
-
-def red(txt):
-    return '{}{}{}'.format(Fore.RED, txt, Fore.RESET)
-
-
-def blue(txt):
-    return '{}{}{}'.format(Fore.BLUE, txt, Fore.RESET)
-
-
-def white(txt):
-    return '{}{}{}'.format(Fore.WHITE, txt, Fore.RESET)
-
-
-def merge_line(key, cnt, in_use, diff, raw, style=Style.NORMAL):
-    if diff > 0:
-        # We have too many instances
-        arrow = up_arrow
-        color = Fore.RED
-    elif diff < 0:
-        arrow = down_arrow
-        color = Fore.BLUE
-    else:
-        color = Fore.WHITE
-        diff = smiley
-        arrow = ''
-    if raw:
-        return '"{}"\t{}\t{}\t{}'.format(key, str(cnt), str(in_use), str(diff))
-    else:
-        return '{}{:<15s}{:>10s}{:>10s}{}{:>10s}{}{}'.format(style, key, str(cnt), str(in_use), color, str(diff), arrow, Style.RESET_ALL)
-
-
-def merge_instances(r_instances, instances, raw=False):
-    lines = []
-    r_total = 0
-    iu_total = 0
-    d_total = 0
-
-    for key, cnt in r_instances.types.items():
-        in_use = instances.get(key)
-        diff = int(cnt - in_use)
-
-        r_total += cnt
-        iu_total += in_use
-        d_total += diff
-
-        lines.append(merge_line(key, cnt, in_use, diff, raw))
-    lines.append('\u2500' * 46)
-    lines.append(merge_line('Total', r_total, iu_total, d_total, raw, Style.BRIGHT))
-    return '\n'.join(lines)
-
-
-def print_header(top, raw=False):
-    arrows = Fore.RED + up_arrow + Fore.WHITE + '/' + Fore.BLUE + down_arrow
-    if raw:
-        print('{}{:^46}{}'.format(Style.BRIGHT, top, Style.RESET_ALL))
-        print('"{}"\t"{}"\t"{}"\t"{}"{}'.format('Type', 'Reserved', 'In Use', arrows, Fore.RESET))
-    else:
-        print('\u2500' * 46)
-        print('{:^46}'.format(top))
-        print('\u2500' * 46)
-        print('{}{:<15s}{:>10}{:>10}{:>8}{}{}'.format(Style.BRIGHT, 'Type', 'Reserved', 'In Use', ' ', arrows, Style.RESET_ALL))
-        print('\u2500' * 46)
-
-
-def print_instance_info(top, instances, r_instances, raw):
-    merged_output = merge_instances(r_instances, instances, raw)
-    expiry_output = r_instances.expiries.show()
-    print_header(top, raw)
-    print(merged_output)
-    if expiry_output is not None:
-        print(expiry_output)
-    else:
-        print('\nNo reservations expiring in the next 30 days')
-
-
-def collect_ec2_info(raw=False):
+def collect_ec2_info():
     client = boto3.client('ec2')
     instances = Instances(client)
     r_instances = ReservedInstances(client)
-    print_instance_info('EC2 Instances', instances, r_instances, raw)
+    return (instances, r_instances)
 
 
-def collect_rds_info(raw=False):
+def collect_rds_info():
     client = boto3.client('rds')
     instances = RdsInstances(client)
     r_instances = ReservedRdsInstances(client)
-    print_instance_info('RDS Instances', instances, r_instances, raw)
+    return (instances, r_instances)
 
 
 def main():
-    raw = False
-    init()
-    collect_ec2_info(raw)
-    print('')
-    collect_rds_info(raw)
+    formatter = None
+    parser = argparse.ArgumentParser(description='Calculate AWS instance diffs')
+    parser.add_argument("-p", "--protocol", default="termio", help='The output protocol to use', choices=['html', 'termio'])
+    parser.add_argument("-f", "--file", help='Optional file to output to. Defaults to stdout')
+    args, unknownargs = parser.parse_known_args()
+    protocol = args.protocol
+
+    f = None
+    if args.file:
+        f = open(args.file, 'w')
+
+    cfg = FormatConfig(f)
+
+    if protocol == 'html':
+        formatter = HtmlFormatter(cfg)
+    else:
+        formatter = TermioFormatter(cfg)
+
+    instances, r_instances = collect_ec2_info()
+    formatter.format_table('EC2 Instances', instances, r_instances)
+
+    instances, r_instances = collect_rds_info()
+    formatter.format_table('RDS Instances', instances, r_instances)
+
+    formatter.format()
 
 
 if __name__ == '__main__':
