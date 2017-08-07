@@ -22,7 +22,7 @@ You can output as terio or html via the `-p` flag.
 You can output to stdout or to a file via the `-f` flag.
 
 ## Run with defaults, termio to stdout
-![sample termio output][doc/images/termio_sample.png]
+![sample termio output](doc/images/termio_sample.png)
 
 ## Run with `-p html`
 Note: because instance_count defaults to writing to stdout, the `-f index.html`
@@ -33,4 +33,4 @@ $ ./instance_count.py -p html -f index.html
 $
 ```
 
-![sample html output][doc/images/html_sample.png]
+![sample html output](doc/images/html_sample.png)
